@@ -1,11 +1,12 @@
-COREDNS_VERSION = v1.9.3
+COREDNS_VERSION = 1.9.3
+COREDNS_GITREF = v1.9.3
 BUILD_VERSION_REPOSHA = $(shell git rev-parse --short HEAD)
 COREDNS_BUILD_VERSION = mangadex-$(BUILD_VERSION_REPOSHA)
 
-COREDNS_SOURCES = https://codeload.github.com/coredns/coredns/tar.gz/$(COREDNS_VERSION)
+COREDNS_SOURCES = https://codeload.github.com/coredns/coredns/tar.gz/$(COREDNS_GITREF)
 COREDNS_TARBALL = coredns-$(COREDNS_VERSION).tar.gz
 COREDNS_BUILDIR = src
-COREDNS_DIST = coredns
+COREDNS_DIST = $(shell pwd)/coredns
 
 all: build dist
 

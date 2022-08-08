@@ -28,7 +28,7 @@ variables: &default-variables
     - make COREDNS_GITREPO="$COREDNS_GITREPO" COREDNS_VERSION="$COREDNS_VERSION" COREDNS_GITREF="$COREDNS_GITREF"
   artifacts:
     expire_in: 7 days
-    paths: [ "coredns" ]
+    paths: [ "coredns", "coredns-${COREDNS_VERSION}.tar.gz", "src/coremain/version.go", "src/go.mod" ]
 
 .job-publish: &job-publish
   image: docker.io/curlimages/curl:latest
