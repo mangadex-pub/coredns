@@ -17,12 +17,16 @@ $(COREDNS_BUILDIR): $(COREDNS_TARBALL)
 	@if ! [ -d "$(COREDNS_BUILDIR)" ]; then mkdir -v "$(COREDNS_BUILDIR)"; fi
 	tar -C $(COREDNS_BUILDIR) --strip-components=1 -xf "$(COREDNS_TARBALL)"
 
+# Would it have killed them to make go mod tidy --go=current or something? *eyeroll*
+GOVER = $(shell go version | cut -d' ' -f3 | grep -o -E '1.[0-9]+')
+
 .PHONY: build
 build: $(COREDNS_BUILDIR)
 	cd "$(COREDNS_BUILDIR)" && ! [ -f "coremain/version.go.orig" ] && mv -fv "coremain/version.go" "coremain/version.go.orig" || true
 	cd "$(COREDNS_BUILDIR)" && sed 's/^\tCoreVersion.*/\tCoreVersion = "$(COREDNS_VERSION)-$(COREDNS_BUILD_VERSION)"/g' "coremain/version.go.orig" > "coremain/version.go"
 	cd "$(COREDNS_BUILDIR)" && grep 'unbound' plugin.cfg || echo "unbound:github.com/coredns/unbound" >> plugin.cfg
-	cd "$(COREDNS_BUILDIR)" && go get -v "github.com/coredns/unbound@v0.0.7" && go mod edit -replace "github.com/coredns/unbound@v0.0.7=github.com/cloudflare/unbound@master" && go mod tidy
+	cd "$(COREDNS_BUILDIR)" && go get -v "github.com/coredns/unbound@v0.0.7" && go mod edit -replace "github.com/coredns/unbound@v0.0.7=github.com/cloudflare/unbound@master"
+	cd "$(COREDNS_BUILDIR)" && go mod tidy -go="$(GOVER)"
 	$(MAKE) -C "$(COREDNS_BUILDIR)" CGO_ENABLED=1
 
 .PHONY: dist
