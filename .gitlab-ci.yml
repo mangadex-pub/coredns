@@ -1,0 +1,77 @@
+stages:
+  - build
+  - publish
+
+variables: &default-variables
+  TZ: "UTC"
+  GIT_DEPTH: "1"
+  COREDNS_GITREPO: "https://github.com/coredns/coredns.git"
+  KUBERNETES_MEMORY_REQUEST: 2Gi
+  KUBERNETES_MEMORY_LIMIT: 2Gi
+
+.vars-stable: &vars-stable
+  COREDNS_VERSION: 1.9.3
+  COREDNS_GITREF: 45b0a11294c59bfd806a57807aaa2a185f761cd5
+
+.vars-dev: &vars-dev
+  COREDNS_VERSION: dev
+  COREDNS_GITREF: 592fab7b7f629877f227885e08b20ac7d02ae5c9
+
+.job-build: &job-build
+  image: golang:1.19-bullseye
+  needs: [ ]
+  before_script:
+    - apt -qq update
+    - apt install -y --no-install-recommends -qq git libunbound-dev
+  script:
+    - make COREDNS_GITREPO="$COREDNS_GITREPO" COREDNS_VERSION="$COREDNS_VERSION" COREDNS_GITREF="$COREDNS_GITREF"
+  artifacts:
+    expire_in: 7 days
+    paths: [ "coredns" ]
+
+.job-publish: &job-publish
+  image: docker.io/curlimages/curl:latest
+  stage: publish
+  script: |
+    set -eu
+
+    PKG_VER=$COREDNS_VERSION
+    if [ "$CI_COMMIT_REF_NAME" != "$CI_DEFAULT_BRANCH" ]; then
+      export PKG_VER="branch-$CI_COMMIT_REF_SLUG-$COREDNS_VERSION-$COREDNS_GITREF"
+      echo "Git reference $CI_COMMIT_REF_NAME is not the default branch. Setting version to $PKG_VER"
+    fi
+
+    curl -fsSL \
+      -H"JOB-TOKEN: $CI_JOB_TOKEN" \
+      --upload-file "coredns" \
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coredns/$PKG_VER/coredns"
+
+build:stable:
+  <<: *job-build
+  variables:
+    <<: *default-variables
+    <<: *vars-stable
+
+build:dev:
+  <<: *job-build
+  variables:
+    <<: *default-variables
+    <<: *vars-dev
+
+publish:stable:
+  <<: *job-publish
+  variables:
+    <<: *default-variables
+    <<: *vars-stable
+  needs:
+    - job: "build:stable"
+      artifacts: true
+
+haproxy-tarball:dev:
+  <<: *job-publish
+  variables:
+    <<: *default-variables
+    <<: *vars-dev
+  needs:
+    - job: "build:dev"
+      artifacts: true
