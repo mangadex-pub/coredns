@@ -19,6 +19,7 @@ variables: &default-variables
 
 .job-build: &job-build
   image: golang:1.19-bullseye
+  stage: build
   needs: [ ]
   before_script:
     - apt -qq update
