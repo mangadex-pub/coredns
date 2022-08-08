@@ -68,7 +68,7 @@ publish:stable:
     - job: "build:stable"
       artifacts: true
 
-haproxy-tarball:dev:
+publish:dev:
   <<: *job-publish
   variables:
     <<: *default-variables
