@@ -1,24 +1,25 @@
 stages:
-  - build
-  - publish
+  - "build"
+  - "publish"
 
 variables: &default-variables
   TZ: "UTC"
   GIT_DEPTH: "1"
   COREDNS_GITREPO: "https://github.com/coredns/coredns.git"
-  KUBERNETES_MEMORY_REQUEST: 2Gi
-  KUBERNETES_MEMORY_LIMIT: 2Gi
+  DEBIAN_CODENAME: "bullseye"
+  KUBERNETES_MEMORY_REQUEST: "2Gi"
+  KUBERNETES_MEMORY_LIMIT: "2Gi"
 
 .vars-stable: &vars-stable
-  COREDNS_VERSION: 1.9.3
-  COREDNS_GITREF: 45b0a11294c59bfd806a57807aaa2a185f761cd5
+  COREDNS_VERSION: "1.9.3"
+  COREDNS_GITREF: "45b0a11294c59bfd806a57807aaa2a185f761cd5"
 
 .vars-dev: &vars-dev
-  COREDNS_VERSION: dev
-  COREDNS_GITREF: 592fab7b7f629877f227885e08b20ac7d02ae5c9
+  COREDNS_VERSION: "dev"
+  COREDNS_GITREF: "592fab7b7f629877f227885e08b20ac7d02ae5c9"
 
 .job-build: &job-build
-  image: golang:1.19-bullseye
+  image: "golang:1.19-${DEBIAN_CODENAME}"
   stage: build
   needs: [ ]
   before_script:
@@ -27,7 +28,7 @@ variables: &default-variables
   script:
     - make COREDNS_GITREPO="$COREDNS_GITREPO" COREDNS_VERSION="$COREDNS_VERSION" COREDNS_GITREF="$COREDNS_GITREF"
   artifacts:
-    expire_in: 7 days
+    expire_in: "7 days"
     paths: [ "coredns", "coredns-${COREDNS_VERSION}.tar.gz", "src/coremain/version.go", "src/go.mod" ]
 
 .job-publish: &job-publish
@@ -46,6 +47,67 @@ variables: &default-variables
       -H"JOB-TOKEN: $CI_JOB_TOKEN" \
       --upload-file "coredns" \
       "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coredns/$PKG_VER/coredns"
+
+.job-docker: &job-docker
+  stage: publish
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [ "" ]
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"gitlab-ci-token\",\"password\":\"$CI_JOB_TOKEN\"}}}" > /kaniko/.docker/config.json
+  script: |
+    set -eu
+
+    export DEBIAN_CODENAME="bullseye"
+    export JOB_TIMESTAMP="$(date -D '%Y-%m-%dT%H:%M:%S%Z' -d "$CI_JOB_STARTED_AT" +'%Y%m%d-%H%M')"
+
+    # A.B.C -> A.B, otherwise preserve original; so 2.7-dev -> 2.7-dev
+    if echo "$COREDNS_VERSION" | grep -E '([0-9]\.){2}[0-9]'; then
+      export COREDNS_SHORTVER="$(echo "$COREDNS_VERSION" | cut -d'.' -f1-2)"
+    else
+      export COREDNS_SHORTVER=$COREDNS_VERSION
+    fi
+    echo "Building image with"
+    echo "  -> coredns version: $COREDNS_VERSION ($COREDNS_SHORTVER)"
+    echo "  -> debian codename: $DEBIAN_CODENAME"
+    echo "  -> git commit hash: $CI_COMMIT_SHORT_SHA"
+    echo "  -> build timestamp: $JOB_TIMESTAMP"
+
+    export IMAGE_TAG_UNIQUE="$CI_COMMIT_SHORT_SHA-$JOB_TIMESTAMP-$COREDNS_SHORTVER-$COREDNS_GITREF"
+    export IMAGE_TAG_ROLLING_COMMIT="git-$CI_COMMIT_SHORT_SHA-$COREDNS_VERSION"
+    export IMAGE_TAG_ROLLING_GITREF="$CI_COMMIT_REF_SLUG-$COREDNS_VERSION"
+
+    export IMAGE_TAG_VERSIONS="$COREDNS_VERSION-$DEBIAN_CODENAME"
+    export IMAGE_TAG_SHORTVER="$COREDNS_SHORTVER-$DEBIAN_CODENAME"
+    if [ "$CI_COMMIT_REF_NAME" != "$CI_DEFAULT_BRANCH" ]; then
+      export IMAGE_TAG_VERSIONS="branch-$CI_COMMIT_REF_SLUG-$IMAGE_TAG_VERSIONS"
+      export IMAGE_TAG_SHORTVER="branch-$CI_COMMIT_REF_SLUG-$IMAGE_TAG_SHORTVER"
+      echo "Git reference $CI_COMMIT_REF_NAME is not the default branch. Rewriting git rolling tag as $IMAGE_TAG_VERSIONS / $IMAGE_TAG_SHORTVER"
+    fi
+
+    echo "***"
+    echo "Will build and push image as:"
+    echo "- $CI_REGISTRY_IMAGE:$IMAGE_TAG_UNIQUE"
+    echo "- $CI_REGISTRY_IMAGE:$IMAGE_TAG_ROLLING_COMMIT"
+    echo "- $CI_REGISTRY_IMAGE:$IMAGE_TAG_ROLLING_GITREF"
+    echo "- $CI_REGISTRY_IMAGE:$IMAGE_TAG_VERSIONS"
+    echo "- $CI_REGISTRY_IMAGE:$IMAGE_TAG_SHORTVER"
+    echo "***"
+
+    (
+      set -x;
+      /kaniko/executor \
+        --context . \
+        --dockerfile Dockerfile \
+        --build-arg   "DEBIAN_CODENAME=$DEBIAN_CODENAME" \
+        --destination "$CI_REGISTRY_IMAGE:$IMAGE_TAG_UNIQUE" \
+        --destination "$CI_REGISTRY_IMAGE:$IMAGE_TAG_ROLLING_COMMIT" \
+        --destination "$CI_REGISTRY_IMAGE:$IMAGE_TAG_ROLLING_GITREF" \
+        --destination "$CI_REGISTRY_IMAGE:$IMAGE_TAG_VERSIONS" \
+        --destination "$CI_REGISTRY_IMAGE:$IMAGE_TAG_SHORTVER" \
+        --single-snapshot
+    )
 
 build:stable:
   <<: *job-build
@@ -70,6 +132,24 @@ publish:stable:
 
 publish:dev:
   <<: *job-publish
+  variables:
+    <<: *default-variables
+    <<: *vars-dev
+  needs:
+    - job: "build:dev"
+      artifacts: true
+
+docker:stable:
+  <<: *job-docker
+  variables:
+    <<: *default-variables
+    <<: *vars-stable
+  needs:
+    - job: "build:stable"
+      artifacts: true
+
+docker:dev:
+  <<: *job-docker
   variables:
     <<: *default-variables
     <<: *vars-dev
