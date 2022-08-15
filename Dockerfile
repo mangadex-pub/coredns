@@ -11,6 +11,7 @@ RUN apt -q update && \
       ca-certificates \
       dnsutils \
       libunbound8 && \
+    update-ca-certificates && \
     apt -qq -y --purge autoremove && \
     apt -qq -y clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/* /var/log/*
