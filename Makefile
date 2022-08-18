@@ -24,8 +24,7 @@ GOVER = $(shell go version | cut -d' ' -f3 | grep -o -E '1.[0-9]+')
 build: $(COREDNS_BUILDIR)
 	cd "$(COREDNS_BUILDIR)" && ! [ -f "coremain/version.go.orig" ] && mv -fv "coremain/version.go" "coremain/version.go.orig" || true
 	cd "$(COREDNS_BUILDIR)" && sed 's/^\tCoreVersion.*/\tCoreVersion = "$(COREDNS_VERSION)-$(COREDNS_BUILD_VERSION)"/g' "coremain/version.go.orig" > "coremain/version.go"
-	cd "$(COREDNS_BUILDIR)" && grep 'unbound' plugin.cfg || echo "unbound:github.com/coredns/unbound" >> plugin.cfg
-	cd "$(COREDNS_BUILDIR)" && go get -v "github.com/coredns/unbound@v0.0.7" && go mod edit -replace "github.com/coredns/unbound@v0.0.7=github.com/cloudflare/unbound@master"
+	cd "$(COREDNS_BUILDIR)" && grep 'unbound' plugin.cfg || echo "unbound:github.com/mangadex-pub/coredns-plugin-unbound" >> plugin.cfg
 	cd "$(COREDNS_BUILDIR)" && go mod tidy -go="$(GOVER)"
 	$(MAKE) -C "$(COREDNS_BUILDIR)" CGO_ENABLED=1
 
